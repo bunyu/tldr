@@ -82,6 +82,13 @@ class ClaudeSummarizer(
         SummaryResult(markdown = result, inputTruncated = prepared.truncated, model = model)
     }
 
+    override suspend fun warmUp() {
+        withContext(Dispatchers.IO) {
+            // Listing models is free and opens the connection the summary request will reuse.
+            runCatching { client.models().list() }
+        }
+    }
+
     companion object {
         /** Haiku has no server-side fallback; sending the parameter would be pointless. */
         fun supportsServerFallback(model: String): Boolean = !model.contains("haiku")

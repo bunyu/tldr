@@ -8,9 +8,21 @@ import kotlin.test.assertTrue
 class ContentPrepTest {
     @Test
     fun dropsBlankAndRepeatedLines() {
-        val prepared = ContentPrep.prepare("Hello\n\n  Hello  \nThích\nWorld\tthere\nThích")
-        assertEquals("Hello\nThích\nWorld there", prepared.text)
+        val prepared = ContentPrep.prepare("Hello\n\n  Hello  \nAnh ấy\nWorld\tthere\nAnh ấy")
+        assertEquals("Hello\nAnh ấy\nWorld there", prepared.text)
         assertFalse(prepared.truncated)
+    }
+
+    @Test
+    fun dropsButtonsAndCounters() {
+        val raw = "Nguyễn Văn A\nHôm nay trời đẹp quá, đi chơi thôi!\nThích\nBình luận\nChia sẻ\n1,2K\n35 bình luận\nSee more"
+        assertEquals("Nguyễn Văn A\nHôm nay trời đẹp quá, đi chơi thôi!", ContentPrep.prepare(raw).text)
+    }
+
+    @Test
+    fun keepsSentencesThatMentionUiWords() {
+        val raw = "Hãy thích và chia sẻ nếu bạn thấy hay\nNăm 2024 có nhiều thay đổi"
+        assertEquals(raw, ContentPrep.prepare(raw).text)
     }
 
     @Test

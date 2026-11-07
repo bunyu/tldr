@@ -62,6 +62,20 @@ object ScreenTextExtractor {
         )
     }
 
+    /**
+     * Buttons, text fields, checkboxes and tabs are app UI, not content. Some apps wrap a whole
+     * post in a "button", so only short button labels are skipped. (Tappable text such as an
+     * author's name is kept; button-like words are removed later by ContentPrep.)
+     */
+    private fun isUiControl(node: AccessibilityNodeInfo): Boolean {
+        val cls = node.className?.toString().orEmpty()
+        if (cls.endsWith("EditText") || cls.endsWith("CheckBox") || cls.endsWith("Switch") ||
+            cls.endsWith("TabWidget") || cls.endsWith("SeekBar")
+        ) return true
+        val label = (node.text ?: node.contentDescription)?.length ?: 0
+        return cls.endsWith("Button") && label < 40
+    }
+
     private fun collectText(root: AccessibilityNodeInfo, out: MutableList<String>) {
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.addLast(root)
@@ -70,10 +84,12 @@ object ScreenTextExtractor {
             val node = stack.removeLast()
             visited++
             if (!node.isVisibleToUser) continue
+            val skipOwnText = isUiControl(node)
 
             val text = node.text?.toString()?.trim().orEmpty()
             val desc = node.contentDescription?.toString()?.trim().orEmpty()
             when {
+                skipOwnText -> Unit
                 text.isNotEmpty() -> out.add(text)
                 // Many apps (Facebook included) put post text in the content description.
                 desc.length > 1 -> out.add(desc)

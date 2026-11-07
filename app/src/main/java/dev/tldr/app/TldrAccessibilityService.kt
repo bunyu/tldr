@@ -17,6 +17,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
 import android.widget.Toast
 import dev.tldr.summarizer.ContentPrep
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
@@ -29,6 +34,8 @@ class TldrAccessibilityService : AccessibilityService() {
     private var bubble: View? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var lastWarmUp = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -42,6 +49,7 @@ class TldrAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        scope.cancel()
         hideBubble()
         instance = null
         super.onDestroy()
@@ -108,6 +116,7 @@ class TldrAccessibilityService : AccessibilityService() {
         view.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    warmUpConnection()
                     downX = event.rawX
                     downY = event.rawY
                     startX = params.x
@@ -140,6 +149,17 @@ class TldrAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Opens the connection to the AI provider as soon as a finger touches the bubble, so it is
+     * ready by the time the screen has been read. Idle connections stay open for a few minutes.
+     */
+    private fun warmUpConnection() {
+        val now = System.currentTimeMillis()
+        if (now - lastWarmUp < WARM_UP_INTERVAL_MS) return
+        lastWarmUp = now
+        scope.launch { SettingsStore(this@TldrAccessibilityService).summarizer()?.warmUp() }
+    }
+
     private fun snapToEdge(view: View, params: WindowManager.LayoutParams) {
         val screenWidth = resources.displayMetrics.widthPixels
         val center = params.x + view.width / 2
@@ -165,6 +185,8 @@ class TldrAccessibilityService : AccessibilityService() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val WARM_UP_INTERVAL_MS = 60_000L
+
         @Volatile
         var instance: TldrAccessibilityService? = null
             private set

@@ -39,6 +39,12 @@ interface Summarizer {
         /** Short Vietnamese status updates, e.g. "retrying with another model". */
         onStatus: (String) -> Unit = {},
     ): SummaryResult
+
+    /**
+     * Opens the HTTPS connection to the provider ahead of time so the real request skips the
+     * DNS/TLS handshake. Best effort: never throws.
+     */
+    suspend fun warmUp() {}
 }
 
 enum class Provider(
@@ -55,8 +61,9 @@ enum class Provider(
     ),
     GEMINI(
         label = "Gemini (Google)",
-        defaultModel = "gemini-3.8-flash",
-        modelChoices = listOf("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"),
+        // Flash-Lite answers fastest and is overloaded less often; plenty for summaries.
+        defaultModel = "gemini-3.5-flash-lite",
+        modelChoices = listOf("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"),
         retiredModels = setOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"),
     );
 

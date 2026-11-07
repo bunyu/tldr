@@ -113,8 +113,8 @@ class GeminiSummarizerTest {
 
     @Test
     fun savedRetiredModelFallsBackToDefault() {
-        assertEquals("gemini-3.8-flash", Provider.GEMINI.resolveModel("gemini-2.5-flash"))
-        assertEquals("gemini-3.8-flash", Provider.GEMINI.resolveModel(""))
-        assertEquals("gemini-3.5-flash-lite", Provider.GEMINI.resolveModel("gemini-3.5-flash-lite"))
+        assertEquals("gemini-3.5-flash-lite", Provider.GEMINI.resolveModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.5-flash-lite", Provider.GEMINI.resolveModel(""))
+        assertEquals("gemini-3.8-flash", Provider.GEMINI.resolveModel("gemini-3.8-flash"))
     }
 }

@@ -77,6 +77,15 @@ class GeminiSummarizer(
         throw lastError ?: SummaryException("Gemini không trả lời.", retryable = true)
     }
 
+    override suspend fun warmUp() {
+        withContext(Dispatchers.IO) {
+            // Any response will do (this returns 404): it leaves a live connection in OkHttp's pool.
+            runCatching {
+                http.newCall(Request.Builder().url(baseUrl).head().build()).execute().close()
+            }
+        }
+    }
+
     private class HttpError(val code: Int, val body: String) : Exception()
 
     /** One streamed request. Returns the full text; throws [HttpError] for non-2xx responses. */
@@ -188,7 +197,7 @@ class GeminiSummarizer(
         private val TRANSIENT_CODES = setOf(429, 500, 502, 503, 504)
 
         /** Tried in order when the chosen model is overloaded. */
-        val FALLBACK_MODELS = listOf("gemini-3.6-flash", "gemini-3.5-flash-lite")
+        val FALLBACK_MODELS = listOf("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite")
 
         fun usesThinkingLevel(model: String): Boolean =
             model.startsWith("gemini-3") || model.startsWith("gemini-4") || model.endsWith("-latest")
