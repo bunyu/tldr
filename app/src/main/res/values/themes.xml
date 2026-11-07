@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Tldr" parent="Theme.Material3.DayNight">
-        <item name="colorPrimary">@color/brand</item>
-    </style>
+    <!-- Material 3 baseline colors: they come with matching light and dark variants, so text on
+         buttons stays readable in dark mode. -->
+    <style name="Theme.Tldr" parent="Theme.Material3.DayNight.NoActionBar" />
 
     <style name="Theme.Tldr.Dialog" parent="Theme.Material3.DayNight.Dialog">
-        <item name="colorPrimary">@color/brand</item>
         <item name="windowNoTitle">true</item>
         <item name="android:windowMinWidthMajor">95%</item>
         <item name="android:windowMinWidthMinor">95%</item>
         <item name="android:windowCloseOnTouchOutside">true</item>
+    </style>
+
+    <!-- Body text on the setup screen: larger than the default for easier reading. -->
+    <style name="TextAppearance.Tldr.Body" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textSize">18sp</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+    </style>
+
+    <style name="TextAppearance.Tldr.Section" parent="TextAppearance.Material3.TitleLarge">
+        <item name="android:textStyle">bold</item>
     </style>
 </resources>

@@ -5,7 +5,9 @@
     <string name="accessibility_description">Cho phép TLDR hiện bong bóng nổi và đọc chữ trên màn hình khi bạn bấm vào bong bóng, để tóm tắt bằng tiếng Việt. Nội dung chỉ được gửi tới nhà cung cấp AI bạn chọn khi bạn bấm.</string>
 
     <string name="setup_title">1. Bật bong bóng nổi</string>
-    <string name="setup_body">TLDR dùng dịch vụ Trợ năng để hiện bong bóng trên mọi ứng dụng và đọc chữ trên màn hình khi bạn bấm vào nó. Vào Cài đặt → Trợ năng → Ứng dụng đã tải xuống → TLDR và bật lên.\n\nNếu nút bật bị mờ (Android 13 trở lên, app cài ngoài CH Play): vào Thông tin ứng dụng TLDR → menu ⋮ → \"Cho phép cài đặt bị hạn chế\", rồi thử lại.</string>
+    <string name="setup_body">TLDR cần quyền Trợ năng để hiện bong bóng trên mọi ứng dụng và đọc chữ trên màn hình khi bạn bấm vào bong bóng.</string>
+    <string name="setup_steps">Cách bật:\n1. Bấm \"Mở cài đặt Trợ năng\", chọn TLDR và bật lên.\n2. Nếu máy báo \"bị hạn chế\" (app cài ngoài CH Play): bấm \"Mở thông tin ứng dụng\" bên dưới, bấm dấu ⋮ ở góc trên bên phải, chọn \"Cho phép cài đặt bị hạn chế\".\n3. Quay lại bước 1 và bật lại.</string>
+    <string name="open_app_info">Mở thông tin ứng dụng</string>
     <string name="open_accessibility">Mở cài đặt Trợ năng</string>
     <string name="service_on">Trạng thái: đang bật ✅</string>
     <string name="service_off">Trạng thái: chưa bật</string>

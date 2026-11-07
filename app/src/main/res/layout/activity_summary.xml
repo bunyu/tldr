@@ -7,7 +7,7 @@
 
     <TextView
         android:id="@+id/sourceLine"
-        style="@style/TextAppearance.Material3.LabelMedium"
+        style="@style/TextAppearance.Material3.LabelLarge"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:ellipsize="end"
@@ -46,14 +46,15 @@
             style="@style/TextAppearance.Material3.BodyLarge"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:lineSpacingMultiplier="1.15"
+            android:lineSpacingMultiplier="1.2"
+            android:textSize="18sp"
             android:paddingTop="8dp"
             android:textIsSelectable="true" />
     </androidx.core.widget.NestedScrollView>
 
     <TextView
         android:id="@+id/note"
-        style="@style/TextAppearance.Material3.BodySmall"
+        style="@style/TextAppearance.Material3.BodyMedium"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone" />

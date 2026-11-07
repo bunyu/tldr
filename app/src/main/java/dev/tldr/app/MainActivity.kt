@@ -2,10 +2,14 @@ package dev.tldr.app
 
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import dev.tldr.app.databinding.ActivityMainBinding
 import dev.tldr.summarizer.Prompts
 import dev.tldr.summarizer.Provider
@@ -22,6 +26,19 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         settings = SettingsStore(this)
+
+        // Android 15 draws apps edge to edge; keep the toolbar and content clear of the system bars.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            view.updatePadding(left = bars.left, top = bars.top, right = bars.right, bottom = bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
+
+        binding.openAppInfo.setOnClickListener {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+            )
+        }
 
         binding.openAccessibility.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -62,7 +79,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        binding.serviceStatus.setText(if (isServiceEnabled()) R.string.service_on else R.string.service_off)
+        val enabled = isServiceEnabled()
+        binding.serviceStatus.setText(if (enabled) R.string.service_on else R.string.service_off)
+        binding.setupSteps.visibility = if (enabled) android.view.View.GONE else android.view.View.VISIBLE
+        binding.openAppInfo.visibility = binding.setupSteps.visibility
     }
 
     override fun onPause() {
