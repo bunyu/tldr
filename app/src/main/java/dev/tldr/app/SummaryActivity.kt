@@ -106,13 +106,19 @@ class SummaryActivity : AppCompatActivity() {
         showLoading(if (input.fetchPage) R.string.loading_page else R.string.loading)
         val startedAt = System.currentTimeMillis()
         var streaming = false
+        var statusText: String? = null
+        binding.retry.visibility = View.GONE
+        binding.retry.setOnClickListener { start(input) }
         job = lifecycleScope.launch {
             // Show how long we've been waiting until the first words arrive.
             val ticker = launch {
                 while (isActive && !streaming) {
                     delay(1000)
                     val secs = (System.currentTimeMillis() - startedAt) / 1000
-                    if (!streaming) binding.loadingText.text = getString(R.string.loading_elapsed, secs)
+                    if (!streaming) {
+                        val elapsed = getString(R.string.loading_elapsed, secs)
+                        binding.loadingText.text = statusText?.let { "$it\n$elapsed" } ?: elapsed
+                    }
                 }
             }
             try {
@@ -129,15 +135,25 @@ class SummaryActivity : AppCompatActivity() {
                     showError(getString(R.string.no_text), offerSettings = false)
                     return@launch
                 }
-                val result = summarizer.summarize(request, settings.systemPrompt) { partial ->
-                    lifecycleScope.launch(Dispatchers.Main) {
-                        if (!streaming) {
-                            streaming = true
-                            showStreaming()
+                val result = summarizer.summarize(
+                    request,
+                    settings.systemPrompt,
+                    onPartial = { partial ->
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            if (!streaming) {
+                                streaming = true
+                                showStreaming()
+                            }
+                            markwon.setMarkdown(binding.summary, partial)
                         }
-                        markwon.setMarkdown(binding.summary, partial)
-                    }
-                }
+                    },
+                    onStatus = { status ->
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            statusText = status
+                            if (!streaming) binding.loadingText.text = status
+                        }
+                    },
+                )
                 streaming = true
                 withContext(Dispatchers.Main) {
                     showResult(result, canFetchPage = input.url != null && !input.fetchPage)
@@ -145,6 +161,7 @@ class SummaryActivity : AppCompatActivity() {
             } catch (e: SummaryException) {
                 streaming = true
                 showError(e.message ?: e.toString(), offerSettings = false)
+                if (e.retryable) binding.retry.visibility = View.VISIBLE
             } finally {
                 ticker.cancel()
             }

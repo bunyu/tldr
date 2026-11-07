@@ -20,7 +20,12 @@ data class SummaryResult(
     val model: String,
 )
 
-class SummaryException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/** [retryable] is true when trying again later may work (overload, timeout, network). */
+class SummaryException(
+    message: String,
+    cause: Throwable? = null,
+    val retryable: Boolean = false,
+) : Exception(message, cause)
 
 interface Summarizer {
     /**
@@ -31,6 +36,8 @@ interface Summarizer {
         request: SummaryRequest,
         systemPrompt: String = Prompts.DEFAULT_SYSTEM,
         onPartial: (String) -> Unit = {},
+        /** Short Vietnamese status updates, e.g. "retrying with another model". */
+        onStatus: (String) -> Unit = {},
     ): SummaryResult
 }
 

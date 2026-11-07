@@ -1,6 +1,7 @@
 package dev.tldr.summarizer
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -26,14 +27,66 @@ class GeminiSummarizer(
     private val model: String = Provider.GEMINI.defaultModel,
     private val baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
     private val http: OkHttpClient = defaultClient,
+    private val backoffMs: Long = 2_000,
 ) : Summarizer {
 
     override suspend fun summarize(
         request: SummaryRequest,
         systemPrompt: String,
         onPartial: (String) -> Unit,
+        onStatus: (String) -> Unit,
     ): SummaryResult = withContext(Dispatchers.IO) {
         val prepared = ContentPrep.prepare(request.text)
+        val userText = Prompts.userMessage(request, prepared.text)
+
+        // Try the chosen model a few times, then the backup models. Overload (503) and rate
+        // limits (429) are usually short-lived or specific to one model.
+        val models = listOf(model) + FALLBACK_MODELS.filter { it != model }
+        var lastError: SummaryException? = null
+        for ((index, current) in models.withIndex()) {
+            if (index > 0) onStatus("Gemini $model đang quá tải, chuyển sang $current…")
+            var withThinking = usesThinkingLevel(current)
+            var attempt = 0
+            while (attempt < ATTEMPTS_PER_MODEL) {
+                val outcome = try {
+                    val text = stream(current, systemPrompt, userText, withThinking, onPartial)
+                    return@withContext SummaryResult(text, prepared.truncated, current)
+                } catch (e: HttpError) {
+                    e
+                }
+                when {
+                    // Some models don't accept a thinking level; retry once without it.
+                    outcome.code == 400 && withThinking && outcome.body.contains("thinking", ignoreCase = true) -> {
+                        withThinking = false
+                        continue
+                    }
+                    outcome.code in TRANSIENT_CODES -> {
+                        lastError = errorFor(outcome.code, outcome.body, current)
+                        attempt++
+                        if (attempt < ATTEMPTS_PER_MODEL) {
+                            onStatus("Gemini đang bận, thử lại lần $attempt…")
+                            delay(backoffMs * attempt)
+                        }
+                    }
+                    // 404 on a backup model just means it isn't available to this key; move on.
+                    outcome.code == 404 && index > 0 -> break
+                    else -> throw errorFor(outcome.code, outcome.body, current)
+                }
+            }
+        }
+        throw lastError ?: SummaryException("Gemini không trả lời.", retryable = true)
+    }
+
+    private class HttpError(val code: Int, val body: String) : Exception()
+
+    /** One streamed request. Returns the full text; throws [HttpError] for non-2xx responses. */
+    private fun stream(
+        model: String,
+        systemPrompt: String,
+        userText: String,
+        withThinking: Boolean,
+        onPartial: (String) -> Unit,
+    ): String {
         val body = buildJsonObject {
             putJsonObject("systemInstruction") {
                 putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } }
@@ -41,12 +94,10 @@ class GeminiSummarizer(
             putJsonArray("contents") {
                 addJsonObject {
                     put("role", "user")
-                    putJsonArray("parts") {
-                        addJsonObject { put("text", Prompts.userMessage(request, prepared.text)) }
-                    }
+                    putJsonArray("parts") { addJsonObject { put("text", userText) } }
                 }
             }
-            if (usesThinkingLevel(model)) {
+            if (withThinking) {
                 // Gemini 3 models think at "medium" by default, which makes a summary take far longer.
                 putJsonObject("generationConfig") {
                     putJsonObject("thinkingConfig") { put("thinkingLevel", "low") }
@@ -63,8 +114,8 @@ class GeminiSummarizer(
         val text = StringBuilder()
         try {
             http.newCall(httpRequest).execute().use { resp ->
-                if (!resp.isSuccessful) throw errorFor(resp.code, resp.body?.string().orEmpty())
-                val source = resp.body?.source() ?: throw SummaryException("Gemini không trả về nội dung.")
+                if (!resp.isSuccessful) throw HttpError(resp.code, resp.body?.string().orEmpty())
+                val source = resp.body?.source() ?: throw HttpError(502, "")
                 while (true) {
                     val line = source.readUtf8Line() ?: break
                     if (!line.startsWith("data:")) continue
@@ -75,20 +126,24 @@ class GeminiSummarizer(
                     }
                 }
             }
-        } catch (e: SummaryException) {
+        } catch (e: HttpError) {
             throw e
         } catch (e: InterruptedIOException) {
-            throw SummaryException("Gemini trả lời quá lâu (hơn ${TIMEOUT_SECONDS} giây). Thử lại, hoặc chọn mô hình nhanh hơn như gemini-3.5-flash-lite.", e)
+            throw SummaryException(
+                "Gemini trả lời quá lâu (hơn $TIMEOUT_SECONDS giây). Bấm Thử lại, hoặc chọn mô hình nhanh hơn như gemini-3.5-flash-lite.",
+                e,
+                retryable = true,
+            )
         } catch (e: Exception) {
-            throw SummaryException("Không kết nối được tới Gemini: ${e.message}", e)
+            throw SummaryException("Không kết nối được tới Gemini: ${e.message}", e, retryable = true)
         }
 
         val result = text.toString().trim()
         if (result.isEmpty()) throw SummaryException("Gemini không trả về nội dung (có thể bị chặn bởi bộ lọc an toàn).")
-        SummaryResult(markdown = result, inputTruncated = prepared.truncated, model = model)
+        return result
     }
 
-    private fun errorFor(code: Int, raw: String): SummaryException = when {
+    private fun errorFor(code: Int, raw: String, model: String): SummaryException = when {
         code == 400 && raw.contains("API_KEY_INVALID") ->
             SummaryException("API key Gemini không hợp lệ. Kiểm tra lại trong Cài đặt.")
         code == 404 ->
@@ -97,7 +152,8 @@ class GeminiSummarizer(
                     "Mở TLDR, chọn mô hình khác (ví dụ ${Provider.GEMINI.defaultModel}) rồi thử lại.\n\n" +
                     "Chi tiết: ${errorMessage(raw)}"
             )
-        code == 429 -> SummaryException("Gemini đang giới hạn tốc độ. Thử lại sau ít phút.")
+        code == 429 -> SummaryException("Gemini đang giới hạn tốc độ (hết lượt miễn phí trong phút này). Bấm Thử lại sau ít phút.", retryable = true)
+        code >= 500 -> SummaryException("Máy chủ Gemini đang quá tải, đã thử lại vài lần và cả mô hình dự phòng nhưng chưa được. Bấm Thử lại sau giây lát.", retryable = true)
         else -> SummaryException("Lỗi từ Gemini ($code): ${errorMessage(raw)}")
     }
 
@@ -128,6 +184,11 @@ class GeminiSummarizer(
 
     companion object {
         const val TIMEOUT_SECONDS = 90L
+        private const val ATTEMPTS_PER_MODEL = 2
+        private val TRANSIENT_CODES = setOf(429, 500, 502, 503, 504)
+
+        /** Tried in order when the chosen model is overloaded. */
+        val FALLBACK_MODELS = listOf("gemini-3.6-flash", "gemini-3.5-flash-lite")
 
         fun usesThinkingLevel(model: String): Boolean =
             model.startsWith("gemini-3") || model.startsWith("gemini-4") || model.endsWith("-latest")

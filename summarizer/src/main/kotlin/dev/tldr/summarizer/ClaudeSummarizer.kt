@@ -21,13 +21,14 @@ class ClaudeSummarizer(
     private val client: AnthropicClient = AnthropicOkHttpClient.builder()
         .apiKey(apiKey)
         .timeout(Duration.ofSeconds(90))
-        .maxRetries(1)
+        .maxRetries(3) // the SDK backs off and retries 429/5xx/overloaded itself
         .build()
 
     override suspend fun summarize(
         request: SummaryRequest,
         systemPrompt: String,
         onPartial: (String) -> Unit,
+        onStatus: (String) -> Unit,
     ): SummaryResult = withContext(Dispatchers.IO) {
         val prepared = ContentPrep.prepare(request.text)
         val builder = MessageCreateParams.builder()
@@ -63,11 +64,16 @@ class ClaudeSummarizer(
         } catch (e: UnauthorizedException) {
             throw SummaryException("API key Claude không hợp lệ. Kiểm tra lại trong Cài đặt.", e)
         } catch (e: RateLimitException) {
-            throw SummaryException("Claude đang giới hạn tốc độ. Thử lại sau ít phút.", e)
+            throw SummaryException("Claude đang giới hạn tốc độ. Thử lại sau ít phút.", e, retryable = true)
         } catch (e: AnthropicServiceException) {
-            throw SummaryException("Lỗi từ Claude (${e.statusCode()}): ${e.message}", e)
+            val overloaded = e.statusCode() >= 500
+            throw SummaryException(
+                if (overloaded) "Claude đang quá tải. Bấm Thử lại sau giây lát." else "Lỗi từ Claude (${e.statusCode()}): ${e.message}",
+                e,
+                retryable = overloaded,
+            )
         } catch (e: Exception) {
-            throw SummaryException("Không kết nối được tới Claude: ${e.message}", e)
+            throw SummaryException("Không kết nối được tới Claude: ${e.message}", e, retryable = true)
         }
 
         if (refused) throw SummaryException("Claude đã từ chối tóm tắt nội dung này.")
