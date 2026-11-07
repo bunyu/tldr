@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TLDR</string>
+    <string name="action_summarize">Tóm tắt</string>
+    <string name="accessibility_description">Cho phép TLDR hiện bong bóng nổi và đọc chữ trên màn hình khi bạn bấm vào bong bóng, để tóm tắt bằng tiếng Việt. Nội dung chỉ được gửi tới nhà cung cấp AI bạn chọn khi bạn bấm.</string>
+
+    <string name="setup_title">1. Bật bong bóng nổi</string>
+    <string name="setup_body">TLDR dùng dịch vụ Trợ năng để hiện bong bóng trên mọi ứng dụng và đọc chữ trên màn hình khi bạn bấm vào nó. Vào Cài đặt → Trợ năng → Ứng dụng đã tải xuống → TLDR và bật lên.\n\nNếu nút bật bị mờ (Android 13 trở lên, app cài ngoài CH Play): vào Thông tin ứng dụng TLDR → menu ⋮ → \"Cho phép cài đặt bị hạn chế\", rồi thử lại.</string>
+    <string name="open_accessibility">Mở cài đặt Trợ năng</string>
+    <string name="service_on">Trạng thái: đang bật ✅</string>
+    <string name="service_off">Trạng thái: chưa bật</string>
+    <string name="show_bubble">Hiện bong bóng nổi</string>
+
+    <string name="provider_title">2. Chọn AI và nhập API key</string>
+    <string name="api_key">API key</string>
+    <string name="model">Mô hình</string>
+    <string name="claude_key_help">Lấy key tại console.anthropic.com → API Keys.</string>
+    <string name="gemini_key_help">Lấy key miễn phí tại aistudio.google.com → Get API key.</string>
+
+    <string name="prompt_title">3. Kiểu tóm tắt (tùy chọn)</string>
+    <string name="prompt_hint">Lời nhắc hệ thống</string>
+    <string name="reset_prompt">Khôi phục mặc định</string>
+    <string name="save">Lưu</string>
+    <string name="saved">Đã lưu</string>
+    <string name="try_it">Thử tóm tắt một đoạn mẫu</string>
+
+    <string name="loading">Đang tóm tắt…</string>
+    <string name="loading_page">Đang tải toàn bộ trang…</string>
+    <string name="copy">Sao chép</string>
+    <string name="share">Chia sẻ</string>
+    <string name="close">Đóng</string>
+    <string name="full_page">Tóm tắt toàn trang</string>
+    <string name="open_settings">Mở cài đặt</string>
+    <string name="copied">Đã sao chép</string>
+    <string name="no_key">Bạn chưa nhập API key. Mở TLDR và nhập key ở mục 2.</string>
+    <string name="no_text">Không đọc được chữ trên màn hình này. Thử cuộn tới phần nội dung, hoặc dùng nút Chia sẻ → TLDR.</string>
+    <string name="truncated_note">Nội dung quá dài nên chỉ phần đầu được tóm tắt.</string>
+    <string name="bubble_hidden">Đã ẩn bong bóng. Mở app TLDR để hiện lại.</string>
+    <string name="sample_text">Hà Nội sẽ thí điểm vùng phát thải thấp từ năm 2025 tại một số tuyến phố trung tâm. Theo kế hoạch, xe máy không đạt tiêu chuẩn khí thải sẽ bị hạn chế vào giờ cao điểm. Thành phố cũng sẽ mở thêm 10 tuyến xe buýt điện và hỗ trợ 3 triệu đồng cho người dân đổi xe máy cũ sang xe điện. Các chuyên gia cho rằng chính sách cần đi kèm cải thiện giao thông công cộng để người dân có lựa chọn thay thế.</string>
+</resources>
