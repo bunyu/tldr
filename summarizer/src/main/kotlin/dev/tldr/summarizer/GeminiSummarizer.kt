@@ -17,9 +17,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 
-/** Google Gemini via its REST API (generateContent). */
+/** Google Gemini via its REST API, streamed with streamGenerateContent (server-sent events). */
 class GeminiSummarizer(
     private val apiKey: String,
     private val model: String = Provider.GEMINI.defaultModel,
@@ -27,58 +28,78 @@ class GeminiSummarizer(
     private val http: OkHttpClient = defaultClient,
 ) : Summarizer {
 
-    override suspend fun summarize(request: SummaryRequest, systemPrompt: String): SummaryResult =
-        withContext(Dispatchers.IO) {
-            val prepared = ContentPrep.prepare(request.text)
-            val body = buildJsonObject {
-                putJsonObject("systemInstruction") {
-                    putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } }
-                }
-                putJsonArray("contents") {
-                    addJsonObject {
-                        put("role", "user")
-                        putJsonArray("parts") {
-                            addJsonObject { put("text", Prompts.userMessage(request, prepared.text)) }
-                        }
+    override suspend fun summarize(
+        request: SummaryRequest,
+        systemPrompt: String,
+        onPartial: (String) -> Unit,
+    ): SummaryResult = withContext(Dispatchers.IO) {
+        val prepared = ContentPrep.prepare(request.text)
+        val body = buildJsonObject {
+            putJsonObject("systemInstruction") {
+                putJsonArray("parts") { addJsonObject { put("text", systemPrompt) } }
+            }
+            putJsonArray("contents") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        addJsonObject { put("text", Prompts.userMessage(request, prepared.text)) }
                     }
                 }
             }
-
-            val httpRequest = Request.Builder()
-                .url("$baseUrl/models/$model:generateContent")
-                .header("x-goog-api-key", apiKey)
-                .post(body.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-
-            val responseText = try {
-                http.newCall(httpRequest).execute().use { resp ->
-                    val raw = resp.body?.string().orEmpty()
-                    when {
-                        resp.code == 400 && raw.contains("API_KEY_INVALID") ->
-                            throw SummaryException("API key Gemini không hợp lệ. Kiểm tra lại trong Cài đặt.")
-                        resp.code == 404 ->
-                            throw SummaryException(
-                                "Mô hình \"$model\" không còn dùng được với Gemini. " +
-                                    "Mở TLDR, chọn mô hình khác (ví dụ ${Provider.GEMINI.defaultModel}) rồi thử lại.\n\n" +
-                                    "Chi tiết: ${errorMessage(raw)}"
-                            )
-                        resp.code == 429 ->
-                            throw SummaryException("Gemini đang giới hạn tốc độ. Thử lại sau ít phút.")
-                        !resp.isSuccessful ->
-                            throw SummaryException("Lỗi từ Gemini (${resp.code}): ${errorMessage(raw)}")
-                    }
-                    raw
+            if (usesThinkingLevel(model)) {
+                // Gemini 3 models think at "medium" by default, which makes a summary take far longer.
+                putJsonObject("generationConfig") {
+                    putJsonObject("thinkingConfig") { put("thinkingLevel", "low") }
                 }
-            } catch (e: SummaryException) {
-                throw e
-            } catch (e: Exception) {
-                throw SummaryException("Không kết nối được tới Gemini: ${e.message}", e)
             }
-
-            val text = parseText(responseText)
-            if (text.isEmpty()) throw SummaryException("Gemini không trả về nội dung (có thể bị chặn bởi bộ lọc an toàn).")
-            SummaryResult(markdown = text, inputTruncated = prepared.truncated, model = model)
         }
+
+        val httpRequest = Request.Builder()
+            .url("$baseUrl/models/$model:streamGenerateContent?alt=sse")
+            .header("x-goog-api-key", apiKey)
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val text = StringBuilder()
+        try {
+            http.newCall(httpRequest).execute().use { resp ->
+                if (!resp.isSuccessful) throw errorFor(resp.code, resp.body?.string().orEmpty())
+                val source = resp.body?.source() ?: throw SummaryException("Gemini không trả về nội dung.")
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (!line.startsWith("data:")) continue
+                    val chunk = parseText(line.removePrefix("data:").trim())
+                    if (chunk.isNotEmpty()) {
+                        text.append(chunk)
+                        onPartial(text.toString())
+                    }
+                }
+            }
+        } catch (e: SummaryException) {
+            throw e
+        } catch (e: InterruptedIOException) {
+            throw SummaryException("Gemini trả lời quá lâu (hơn ${TIMEOUT_SECONDS} giây). Thử lại, hoặc chọn mô hình nhanh hơn như gemini-3.5-flash-lite.", e)
+        } catch (e: Exception) {
+            throw SummaryException("Không kết nối được tới Gemini: ${e.message}", e)
+        }
+
+        val result = text.toString().trim()
+        if (result.isEmpty()) throw SummaryException("Gemini không trả về nội dung (có thể bị chặn bởi bộ lọc an toàn).")
+        SummaryResult(markdown = result, inputTruncated = prepared.truncated, model = model)
+    }
+
+    private fun errorFor(code: Int, raw: String): SummaryException = when {
+        code == 400 && raw.contains("API_KEY_INVALID") ->
+            SummaryException("API key Gemini không hợp lệ. Kiểm tra lại trong Cài đặt.")
+        code == 404 ->
+            SummaryException(
+                "Mô hình \"$model\" không còn dùng được với Gemini. " +
+                    "Mở TLDR, chọn mô hình khác (ví dụ ${Provider.GEMINI.defaultModel}) rồi thử lại.\n\n" +
+                    "Chi tiết: ${errorMessage(raw)}"
+            )
+        code == 429 -> SummaryException("Gemini đang giới hạn tốc độ. Thử lại sau ít phút.")
+        else -> SummaryException("Lỗi từ Gemini ($code): ${errorMessage(raw)}")
+    }
 
     /** Pulls error.message out of a Gemini error body, falling back to the raw text. */
     internal fun errorMessage(raw: String): String = try {
@@ -88,20 +109,33 @@ class GeminiSummarizer(
         raw.take(300)
     }
 
+    /** Text parts of one response (or one streamed chunk), skipping the model's thought summaries. */
     internal fun parseText(raw: String): String {
-        val root = Json.parseToJsonElement(raw).jsonObject
+        val root = try {
+            Json.parseToJsonElement(raw).jsonObject
+        } catch (e: Exception) {
+            return ""
+        }
         val candidates = root["candidates"]?.jsonArray ?: return ""
         val first = candidates.firstOrNull()?.jsonObject ?: return ""
         val parts = (first["content"] as? JsonObject)?.get("parts")?.jsonArray ?: return ""
-        return parts.mapNotNull { (it as? JsonObject)?.get("text")?.jsonPrimitive?.contentOrNull }
-            .joinToString("")
-            .trim()
+        return parts.mapNotNull { part ->
+            val obj = part as? JsonObject ?: return@mapNotNull null
+            if (obj["thought"]?.jsonPrimitive?.contentOrNull == "true") return@mapNotNull null
+            obj["text"]?.jsonPrimitive?.contentOrNull
+        }.joinToString("")
     }
 
     companion object {
+        const val TIMEOUT_SECONDS = 90L
+
+        fun usesThinkingLevel(model: String): Boolean =
+            model.startsWith("gemini-3") || model.startsWith("gemini-4") || model.endsWith("-latest")
+
         private val defaultClient = OkHttpClient.Builder()
-            .callTimeout(120, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(TIMEOUT_SECONDS + 30, TimeUnit.SECONDS)
             .build()
     }
 }

@@ -23,7 +23,15 @@ data class SummaryResult(
 class SummaryException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 interface Summarizer {
-    suspend fun summarize(request: SummaryRequest, systemPrompt: String = Prompts.DEFAULT_SYSTEM): SummaryResult
+    /**
+     * Summarizes [request]. The answer streams in: [onPartial] gets the text received so far
+     * (called on a background thread), and the return value is the complete result.
+     */
+    suspend fun summarize(
+        request: SummaryRequest,
+        systemPrompt: String = Prompts.DEFAULT_SYSTEM,
+        onPartial: (String) -> Unit = {},
+    ): SummaryResult
 }
 
 enum class Provider(

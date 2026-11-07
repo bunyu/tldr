@@ -27,6 +27,7 @@
     <string name="try_it">Thử tóm tắt một đoạn mẫu</string>
 
     <string name="loading">Đang tóm tắt…</string>
+    <string name="loading_elapsed">Đang tóm tắt… %1$d giây</string>
     <string name="loading_page">Đang tải toàn bộ trang…</string>
     <string name="copy">Sao chép</string>
     <string name="share">Chia sẻ</string>

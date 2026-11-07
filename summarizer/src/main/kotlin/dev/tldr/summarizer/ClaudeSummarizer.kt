@@ -11,6 +11,7 @@ import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Duration
 
 class ClaudeSummarizer(
     apiKey: String,
@@ -19,49 +20,61 @@ class ClaudeSummarizer(
 
     private val client: AnthropicClient = AnthropicOkHttpClient.builder()
         .apiKey(apiKey)
+        .timeout(Duration.ofSeconds(90))
+        .maxRetries(1)
         .build()
 
-    override suspend fun summarize(request: SummaryRequest, systemPrompt: String): SummaryResult =
-        withContext(Dispatchers.IO) {
-            val prepared = ContentPrep.prepare(request.text)
-            val builder = MessageCreateParams.builder()
-                .model(model)
-                .maxTokens(16_000L)
-                .system(systemPrompt)
-                .addUserMessage(Prompts.userMessage(request, prepared.text))
-                // Summaries are a simple task; low effort keeps them fast and cheap.
-                .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
+    override suspend fun summarize(
+        request: SummaryRequest,
+        systemPrompt: String,
+        onPartial: (String) -> Unit,
+    ): SummaryResult = withContext(Dispatchers.IO) {
+        val prepared = ContentPrep.prepare(request.text)
+        val builder = MessageCreateParams.builder()
+            .model(model)
+            .maxTokens(16_000L)
+            .system(systemPrompt)
+            .addUserMessage(Prompts.userMessage(request, prepared.text))
+            // Summaries are a simple task; low effort keeps them fast and cheap.
+            .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
 
-            if (supportsServerFallback(model)) {
-                // If a safety classifier declines, the API retries on a recommended fallback model.
-                builder.addBeta("server-side-fallback-2026-07-01")
-                builder.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))
-            }
-
-            val message = try {
-                client.beta().messages().create(builder.build())
-            } catch (e: UnauthorizedException) {
-                throw SummaryException("API key Claude không hợp lệ. Kiểm tra lại trong Cài đặt.", e)
-            } catch (e: RateLimitException) {
-                throw SummaryException("Claude đang giới hạn tốc độ. Thử lại sau ít phút.", e)
-            } catch (e: AnthropicServiceException) {
-                throw SummaryException("Lỗi từ Claude (${e.statusCode()}): ${e.message}", e)
-            } catch (e: Exception) {
-                throw SummaryException("Không kết nối được tới Claude: ${e.message}", e)
-            }
-
-            if (message.stopReason().orElse(null) == BetaStopReason.REFUSAL) {
-                throw SummaryException("Claude đã từ chối tóm tắt nội dung này.")
-            }
-
-            val text = message.content()
-                .mapNotNull { block -> block.text().orElse(null)?.text() }
-                .joinToString("")
-                .trim()
-            if (text.isEmpty()) throw SummaryException("Claude không trả về nội dung.")
-
-            SummaryResult(markdown = text, inputTruncated = prepared.truncated, model = model)
+        if (supportsServerFallback(model)) {
+            // If a safety classifier declines, the API retries on a recommended fallback model.
+            builder.addBeta("server-side-fallback-2026-07-01")
+            builder.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))
         }
+
+        val text = StringBuilder()
+        var refused = false
+        try {
+            client.beta().messages().createStreaming(builder.build()).use { stream ->
+                stream.stream().forEach { event ->
+                    event.contentBlockDelta().ifPresent { deltaEvent ->
+                        deltaEvent.delta().text().ifPresent { delta ->
+                            text.append(delta.text())
+                            onPartial(text.toString())
+                        }
+                    }
+                    event.messageDelta().ifPresent { delta ->
+                        if (delta.delta().stopReason().orElse(null) == BetaStopReason.REFUSAL) refused = true
+                    }
+                }
+            }
+        } catch (e: UnauthorizedException) {
+            throw SummaryException("API key Claude không hợp lệ. Kiểm tra lại trong Cài đặt.", e)
+        } catch (e: RateLimitException) {
+            throw SummaryException("Claude đang giới hạn tốc độ. Thử lại sau ít phút.", e)
+        } catch (e: AnthropicServiceException) {
+            throw SummaryException("Lỗi từ Claude (${e.statusCode()}): ${e.message}", e)
+        } catch (e: Exception) {
+            throw SummaryException("Không kết nối được tới Claude: ${e.message}", e)
+        }
+
+        if (refused) throw SummaryException("Claude đã từ chối tóm tắt nội dung này.")
+        val result = text.toString().trim()
+        if (result.isEmpty()) throw SummaryException("Claude không trả về nội dung.")
+        SummaryResult(markdown = result, inputTruncated = prepared.truncated, model = model)
+    }
 
     companion object {
         /** Haiku has no server-side fallback; sending the parameter would be pointless. */

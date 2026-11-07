@@ -17,8 +17,12 @@ import dev.tldr.summarizer.SummaryResult
 import dev.tldr.summarizer.UrlFinder
 import dev.tldr.summarizer.WebPageFetcher
 import io.noties.markwon.Markwon
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Shows a Vietnamese summary in a dialog-style window. Started by the bubble, by "Share → TLDR",
@@ -100,7 +104,17 @@ class SummaryActivity : AppCompatActivity() {
         }
 
         showLoading(if (input.fetchPage) R.string.loading_page else R.string.loading)
+        val startedAt = System.currentTimeMillis()
+        var streaming = false
         job = lifecycleScope.launch {
+            // Show how long we've been waiting until the first words arrive.
+            val ticker = launch {
+                while (isActive && !streaming) {
+                    delay(1000)
+                    val secs = (System.currentTimeMillis() - startedAt) / 1000
+                    if (!streaming) binding.loadingText.text = getString(R.string.loading_elapsed, secs)
+                }
+            }
             try {
                 var request = SummaryRequest(input.text, input.sourceApp, input.url, input.title)
                 if (input.fetchPage && input.url != null) {
@@ -115,10 +129,24 @@ class SummaryActivity : AppCompatActivity() {
                     showError(getString(R.string.no_text), offerSettings = false)
                     return@launch
                 }
-                val result = summarizer.summarize(request, settings.systemPrompt)
-                showResult(result, canFetchPage = input.url != null && !input.fetchPage)
+                val result = summarizer.summarize(request, settings.systemPrompt) { partial ->
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        if (!streaming) {
+                            streaming = true
+                            showStreaming()
+                        }
+                        markwon.setMarkdown(binding.summary, partial)
+                    }
+                }
+                streaming = true
+                withContext(Dispatchers.Main) {
+                    showResult(result, canFetchPage = input.url != null && !input.fetchPage)
+                }
             } catch (e: SummaryException) {
+                streaming = true
                 showError(e.message ?: e.toString(), offerSettings = false)
+            } finally {
+                ticker.cancel()
             }
         }
     }
@@ -131,6 +159,13 @@ class SummaryActivity : AppCompatActivity() {
         binding.note.visibility = View.GONE
         binding.copy.isEnabled = false
         binding.share.isEnabled = false
+    }
+
+    /** First words have arrived: swap the spinner for the summary text, which keeps growing. */
+    private fun showStreaming() {
+        expandWindow()
+        binding.loading.visibility = View.GONE
+        binding.scroll.visibility = View.VISIBLE
     }
 
     private fun showResult(result: SummaryResult, canFetchPage: Boolean) {
