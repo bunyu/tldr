@@ -56,10 +56,16 @@ class GeminiSummarizer(
                     when {
                         resp.code == 400 && raw.contains("API_KEY_INVALID") ->
                             throw SummaryException("API key Gemini không hợp lệ. Kiểm tra lại trong Cài đặt.")
+                        resp.code == 404 ->
+                            throw SummaryException(
+                                "Mô hình \"$model\" không còn dùng được với Gemini. " +
+                                    "Mở TLDR, chọn mô hình khác (ví dụ ${Provider.GEMINI.defaultModel}) rồi thử lại.\n\n" +
+                                    "Chi tiết: ${errorMessage(raw)}"
+                            )
                         resp.code == 429 ->
                             throw SummaryException("Gemini đang giới hạn tốc độ. Thử lại sau ít phút.")
                         !resp.isSuccessful ->
-                            throw SummaryException("Lỗi từ Gemini (${resp.code}): ${raw.take(300)}")
+                            throw SummaryException("Lỗi từ Gemini (${resp.code}): ${errorMessage(raw)}")
                     }
                     raw
                 }
@@ -73,6 +79,14 @@ class GeminiSummarizer(
             if (text.isEmpty()) throw SummaryException("Gemini không trả về nội dung (có thể bị chặn bởi bộ lọc an toàn).")
             SummaryResult(markdown = text, inputTruncated = prepared.truncated, model = model)
         }
+
+    /** Pulls error.message out of a Gemini error body, falling back to the raw text. */
+    internal fun errorMessage(raw: String): String = try {
+        Json.parseToJsonElement(raw).jsonObject["error"]?.jsonObject?.get("message")
+            ?.jsonPrimitive?.contentOrNull ?: raw.take(300)
+    } catch (e: Exception) {
+        raw.take(300)
+    }
 
     internal fun parseText(raw: String): String {
         val root = Json.parseToJsonElement(raw).jsonObject

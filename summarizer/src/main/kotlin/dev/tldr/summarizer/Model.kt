@@ -26,7 +26,13 @@ interface Summarizer {
     suspend fun summarize(request: SummaryRequest, systemPrompt: String = Prompts.DEFAULT_SYSTEM): SummaryResult
 }
 
-enum class Provider(val label: String, val defaultModel: String, val modelChoices: List<String>) {
+enum class Provider(
+    val label: String,
+    val defaultModel: String,
+    val modelChoices: List<String>,
+    /** Model ids the provider no longer serves to new users; a saved one is replaced by [defaultModel]. */
+    val retiredModels: Set<String> = emptySet(),
+) {
     CLAUDE(
         label = "Claude (Anthropic)",
         defaultModel = "claude-opus-5-5",
@@ -34,9 +40,16 @@ enum class Provider(val label: String, val defaultModel: String, val modelChoice
     ),
     GEMINI(
         label = "Gemini (Google)",
-        defaultModel = "gemini-2.5-flash",
-        modelChoices = listOf("gemini-2.5-flash", "gemini-2.5-pro"),
+        defaultModel = "gemini-3.8-flash",
+        modelChoices = listOf("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"),
+        retiredModels = setOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"),
     );
+
+    /** The model to use for a saved choice: blank or retired ids fall back to the default. */
+    fun resolveModel(saved: String?): String {
+        val id = saved?.trim().orEmpty()
+        return if (id.isEmpty() || id in retiredModels) defaultModel else id
+    }
 
     fun create(apiKey: String, model: String = defaultModel): Summarizer = when (this) {
         CLAUDE -> ClaudeSummarizer(apiKey, model)

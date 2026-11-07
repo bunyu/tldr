@@ -18,7 +18,7 @@ are visible, **Bình luận nổi bật**. You can rewrite the prompt in the app
 Summaries come from the AI provider you pick, with your own API key:
 
 - **Claude** (Anthropic): default `claude-opus-5-5`; `claude-haiku-5-5` is much cheaper and fine for short posts.
-- **Gemini** (Google): default `gemini-2.5-flash`, which has a free tier.
+- **Gemini** (Google): default `gemini-3.8-flash`, which has a free tier.
 
 The key is stored encrypted on the phone. Screen text is sent to that provider only when you tap the bubble
 (or share/select text). Nothing else leaves the device.

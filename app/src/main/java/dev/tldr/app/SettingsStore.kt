@@ -34,8 +34,7 @@ class SettingsStore(context: Context) {
     fun setApiKey(provider: Provider, key: String) =
         prefs.edit().putString("api_key_${provider.name}", key.trim()).apply()
 
-    fun model(provider: Provider): String =
-        prefs.getString("model_${provider.name}", null)?.takeIf { it.isNotBlank() } ?: provider.defaultModel
+    fun model(provider: Provider): String = provider.resolveModel(prefs.getString("model_${provider.name}", null))
     fun setModel(provider: Provider, model: String) =
         prefs.edit().putString("model_${provider.name}", model.trim()).apply()
 

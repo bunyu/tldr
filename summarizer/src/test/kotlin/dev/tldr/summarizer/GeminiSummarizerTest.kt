@@ -39,4 +39,26 @@ class GeminiSummarizerTest {
             assertTrue(e.message!!.contains("giới hạn"))
         }
     }
+
+    @Test
+    fun retiredModelGivesActionableError() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(
+                MockResponse().setResponseCode(404)
+                    .setBody("""{"error":{"code":404,"message":"This model models/gemini-2.5-flash is no longer available to new users."}}""")
+            )
+            val s = GeminiSummarizer("k", "gemini-2.5-flash", baseUrl = server.url("/v1beta").toString().trimEnd('/'))
+            val e = assertFailsWith<SummaryException> { s.summarize(SummaryRequest("abc")) }
+            assertTrue(e.message!!.contains("chọn mô hình khác"))
+            assertTrue(e.message!!.contains("no longer available"))
+            assertTrue(!e.message!!.contains("{"))
+        }
+    }
+
+    @Test
+    fun savedRetiredModelFallsBackToDefault() {
+        assertEquals("gemini-3.8-flash", Provider.GEMINI.resolveModel("gemini-2.5-flash"))
+        assertEquals("gemini-3.8-flash", Provider.GEMINI.resolveModel(""))
+        assertEquals("gemini-3.5-flash-lite", Provider.GEMINI.resolveModel("gemini-3.5-flash-lite"))
+    }
 }

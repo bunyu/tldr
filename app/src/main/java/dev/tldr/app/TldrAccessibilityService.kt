@@ -77,6 +77,11 @@ class TldrAccessibilityService : AccessibilityService() {
         bubbleParams = params
     }
 
+    /** Temporarily hides the bubble (e.g. while a summary is on screen) without turning it off. */
+    fun setBubbleVisible(visible: Boolean) {
+        bubble?.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
     fun hideBubble() {
         bubble?.let { runCatching { windowManager.removeView(it) } }
         bubble = null

@@ -49,6 +49,17 @@ class SummaryActivity : AppCompatActivity() {
         start(parseInput(intent))
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Keep the bubble from covering the summary.
+        TldrAccessibilityService.instance?.setBubbleVisible(false)
+    }
+
+    override fun onPause() {
+        TldrAccessibilityService.instance?.setBubbleVisible(true)
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         start(parseInput(intent))
